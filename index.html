@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relay | Teleprompter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="app" class="shell">
+    <section id="license-screen" class="license-screen">
+      <div class="brand-mark"><span></span> RELAY</div>
+      <div class="license-layout">
+        <div class="intro-copy">
+          <p class="eyebrow">Private beta / v0.1</p>
+          <h1>Your words,<br><em>in motion.</em></h1>
+          <p class="intro-text">A calm, controllable teleprompter for recording with confidence. Enter your invitation code to begin your one-year license.</p>
+        </div>
+        <form id="license-form" class="license-card">
+          <div class="card-topline"><span>ACTIVATION</span><span>01 / 01</span></div>
+          <h2>Unlock Relay</h2>
+          <label for="license-key">License key</label>
+          <div class="key-input-wrap">
+            <span>KEY</span>
+            <input id="license-key" name="license-key" type="text" placeholder="RELAY-XXXX-XXXX" autocomplete="off" spellcheck="false" required>
+          </div>
+          <p id="license-message" class="form-message" aria-live="polite"></p>
+          <button class="primary-button" type="submit">Activate license <span>→</span></button>
+          <p class="fine-print">Your license is valid for 12 months on this device.</p>
+          <button id="demo-key" class="text-button" type="button">Use demo key</button>
+        </form>
+      </div>
+      <footer><span>DESIGNED FOR FOCUS</span><span>100 INVITATIONS AVAILABLE</span></footer>
+    </section>
+
+    <section id="prompter-screen" class="prompter-screen hidden">
+      <header class="topbar">
+        <div class="brand-mark"><span></span> RELAY</div>
+        <div class="session-status"><i></i><span id="license-status">LICENSE ACTIVE</span></div>
+        <div class="top-actions">
+          <button id="reset-script" class="icon-button" title="Reset script">↺</button>
+          <button id="fullscreen-button" class="icon-button" title="Enter fullscreen">⛶</button>
+          <button id="lock-button" class="lock-button" title="Lock controls">Lock controls <span>⌘ L</span></button>
+        </div>
+      </header>
+      <div class="workspace">
+        <aside class="control-panel">
+          <div class="panel-heading"><span>SESSION</span><span id="word-count">0 WORDS</span></div>
+          <textarea id="script-input" aria-label="Teleprompter script" placeholder="Paste your script here..."></textarea>
+          <div class="import-row">
+            <label for="script-file" class="import-button">Import script <span>↑</span></label>
+            <input id="script-file" type="file" accept=".txt,text/plain,.md,.markdown,text/markdown,.docx,.pdf">
+            <span id="import-status" class="import-status" aria-live="polite"></span>
+          </div>
+          <div class="controls">
+            <div class="control-group">
+              <div class="control-label"><span>SCROLL SPEED</span><strong id="speed-value">2.0</strong></div>
+              <input id="speed-control" type="range" min="0.5" max="8" step="0.5" value="2">
+              <div class="range-labels"><span>0.5</span><span>8.0</span></div>
+            </div>
+            <div class="control-group">
+              <div class="control-label"><span>TEXT SIZE</span><strong id="size-value">48px</strong></div>
+              <input id="size-control" type="range" min="28" max="82" step="2" value="48">
+              <div class="range-labels"><span>28</span><span>82</span></div>
+            </div>
+            <div class="toggle-row"><span>Mirror text</span><button id="mirror-toggle" class="toggle" type="button" aria-pressed="false"><span></span></button></div>
+            <p id="mirror-status" class="mirror-status" aria-live="polite"></p>
+            <label class="display-setting" for="mirror-display"><span>MIRROR DISPLAY</span><select id="mirror-display"><option value="primary">Primary screen</option></select></label>
+            <div class="toggle-row"><span>Keep screen awake</span><button id="awake-toggle" class="toggle active" type="button" aria-pressed="true"><span></span></button></div>
+          </div>
+          <div class="shortcut-list"><div><span>SPACE</span><span>Play / pause</span></div><div><span>↑ ↓</span><span>Adjust speed</span></div><div><span>⌘ L</span><span>Lock controls</span></div></div>
+        </aside>
+        <section class="stage-wrap">
+          <div class="stage-meta"><span id="clock">00:00</span><span>READING VIEW</span><span id="progress-label">0%</span></div>
+          <div id="stage" class="stage">
+            <div class="guide-line"></div>
+            <div id="prompter-content" class="prompter-content"><p class="empty-state">Your script will appear here.<br><small>Paste text in the session panel to begin.</small></p></div>
+          </div>
+          <div class="transport"><button id="rewind-button" class="transport-button" title="Rewind">↶</button><button id="play-button" class="play-button" title="Play">▶</button><button id="forward-button" class="transport-button" title="Forward">↷</button></div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

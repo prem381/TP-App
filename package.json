@@ -1,0 +1,18 @@
+{
+  "name": "tp",
+  "version": "1.0.0",
+  "description": "Relay Teleprompter desktop app",
+  "main": "app.js",
+  "scripts": {
+    "dev": "python3 -m http.server 4173",
+    "build": "node -e \"const fs=require('fs'); fs.mkdirSync('dist',{recursive:true}); for(const file of ['index.html','styles.css','app.js']) fs.copyFileSync(file,'dist/'+file); console.log('Static frontend copied to dist')\"",
+    "build:windows": "npm run build && tauri build --bundles nsis",
+    "test": "node --check app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.5"
+  }
+}
