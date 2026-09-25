@@ -203,9 +203,15 @@ document.querySelector('#fullscreen-button').addEventListener('click', () => {
     console.error('Unable to toggle fullscreen:', error);
   });
 });
-document.querySelector('#reset-script').addEventListener('click', () => { scriptInput.value = ''; scrollPosition = 0; content.style.transform = ''; updateScript(); });
-document.querySelector('#rewind-button').addEventListener('click', () => { scrollPosition = Math.max(0, scrollPosition - 120); content.style.transform = `translateY(-${scrollPosition}px)`; syncMirrorWindow(); });
-document.querySelector('#forward-button').addEventListener('click', () => { scrollPosition += 120; content.style.transform = `translateY(-${scrollPosition}px)`; syncMirrorWindow(); });
+document.querySelector('#reset-script').addEventListener('click', () => { stopPlayback(); scriptInput.value = ''; scrollPosition = 0; content.style.transform = ''; updateScript(); });
+function seekBy(amount) {
+  const maximumScroll = getMaximumScroll();
+  scrollPosition = Math.max(0, Math.min(maximumScroll, scrollPosition + amount));
+  applyScrollPosition();
+}
+
+document.querySelector('#rewind-button').addEventListener('click', () => seekBy(-120));
+document.querySelector('#forward-button').addEventListener('click', () => seekBy(120));
 
 function getExternalScreen(screenDetails) {
   return screenDetails.screens.find((candidate) => candidate !== screenDetails.currentScreen && (candidate.left !== screen.screenX || candidate.top !== screen.screenY));
@@ -300,17 +306,39 @@ function syncMirrorWindow() {
   mirrorContent.style.transform = `translateY(-${scrollPosition}px) scaleX(-1)`;
 }
 
+function getMaximumScroll() {
+  return Math.max(0, content.scrollHeight - stage.clientHeight * 0.12);
+}
+
+function applyScrollPosition() {
+  content.style.transform = `translateY(-${scrollPosition}px)`;
+  syncMirrorWindow();
+}
+
+function stopPlayback() {
+  isPlaying = false;
+  playButton.textContent = '▶';
+  if (animationFrame) cancelAnimationFrame(animationFrame);
+  animationFrame = null;
+}
+
 function disableExternalMirror(message = '') {
   mirrorEnabled = false;
   content.style.transform = `translateY(-${scrollPosition}px)`;
   mirrorToggle.setAttribute('aria-pressed', 'false');
   mirrorToggle.classList.remove('active');
-  if (mirrorWindow && !mirrorWindow.closed) mirrorWindow.close();
-  if (mirrorNativeWindow) mirrorNativeWindow.close();
-  mirrorChannel?.close();
-  mirrorChannel = null;
-  mirrorNativeWindow = null;
+  mirrorChannel?.postMessage({ type: 'shutdown' });
+  const browserWindowToClose = mirrorWindow;
+  const nativeWindowToClose = mirrorNativeWindow;
+  const channelToClose = mirrorChannel;
   mirrorWindow = null;
+  mirrorNativeWindow = null;
+  mirrorChannel = null;
+  setTimeout(() => {
+    if (browserWindowToClose && !browserWindowToClose.closed) browserWindowToClose.close();
+    if (nativeWindowToClose) nativeWindowToClose.close();
+    channelToClose?.close();
+  }, 100);
   mirrorStatus.textContent = message;
 }
 
@@ -367,6 +395,11 @@ function setupMirrorWindow() {
       mirrorChannel.postMessage({ type: 'ready' });
       return;
     }
+    if (state?.type === 'shutdown') {
+      content.innerHTML = '';
+      document.body.style.background = '#262a27';
+      return;
+    }
     content.innerHTML = state.html;
     const targetText = content.querySelector('p');
     if (targetText) targetText.style.fontSize = state.fontSize;
@@ -376,6 +409,7 @@ function setupMirrorWindow() {
 }
 
 function togglePlayback() {
+  if (!scriptInput.value.trim()) return;
   isPlaying = !isPlaying;
   playButton.textContent = isPlaying ? 'Ⅱ' : '▶';
   if (isPlaying) { lastFrame = performance.now(); animationFrame = requestAnimationFrame(tick); }
@@ -385,18 +419,26 @@ function tick(now) {
   const delta = now - lastFrame;
   lastFrame = now;
   scrollPosition += Number(speedControl.value) * delta / 70;
-  content.style.transform = `translateY(-${scrollPosition}px)`;
-  syncMirrorWindow();
+  const maximumScroll = getMaximumScroll();
+  if (scrollPosition >= maximumScroll) {
+    scrollPosition = maximumScroll;
+    applyScrollPosition();
+    stopPlayback();
+  } else {
+    applyScrollPosition();
+  }
   elapsed += delta;
   clock.textContent = new Date(elapsed).toISOString().slice(14, 19);
   const maxScroll = Math.max(1, content.offsetHeight - stage.offsetHeight * .55);
   progressLabel.textContent = `${Math.min(100, Math.round(scrollPosition / maxScroll * 100))}%`;
-  animationFrame = requestAnimationFrame(tick);
+  if (isPlaying) animationFrame = requestAnimationFrame(tick);
 }
 playButton.addEventListener('click', togglePlayback);
 document.addEventListener('keydown', (event) => {
   if (event.code === 'Space' && document.activeElement !== scriptInput) { event.preventDefault(); togglePlayback(); }
   if (event.key === 'ArrowUp') speedControl.value = Math.min(8, Number(speedControl.value) + .5);
   if (event.key === 'ArrowDown') speedControl.value = Math.max(.5, Number(speedControl.value) - .5);
+  if (event.altKey && event.key === 'ArrowLeft') { event.preventDefault(); seekBy(-120); }
+  if (event.altKey && event.key === 'ArrowRight') { event.preventDefault(); seekBy(120); }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'l') { event.preventDefault(); document.querySelector('#lock-button').classList.toggle('locked'); }
 });
