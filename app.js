@@ -29,6 +29,10 @@ let animationFrame;
 let mirrorWindow;
 let mirrorNativeWindow;
 let mirrorChannel;
+let mirrorReadyUnlisten;
+let mirrorEventUnlisten;
+let mirrorStateSequence = 0;
+let lastSentMirrorHtml;
 let mirrorEnabled = false;
 let availableMonitors = [];
 let selectedMonitor = 'primary';
@@ -232,12 +236,16 @@ function createBrowserMirrorWindow(targetScreen) {
 
 async function createNativeMirrorWindow(selectedMonitorInfo) {
   const WebviewWindow = window.__TAURI__?.webviewWindow?.WebviewWindow;
-  if (!WebviewWindow) return false;
+  const tauriEvent = window.__TAURI__?.event;
+  if (!WebviewWindow || !tauriEvent?.listen || !tauriEvent?.emitTo) return false;
   const targetMonitor = selectedMonitorInfo || availableMonitors.find((monitor) => !monitor.current);
   if (!targetMonitor) throw new Error('No external display detected.');
   const position = { x: targetMonitor.x, y: targetMonitor.y };
   const size = { width: targetMonitor.width, height: targetMonitor.height };
   const mirrorUrl = new URL('index.html?mirror=1', window.location.href).href;
+  lastSentMirrorHtml = undefined;
+  mirrorStateSequence = 0;
+  mirrorReadyUnlisten = await tauriEvent.listen('relay-mirror-ready', () => syncMirrorWindow());
   mirrorNativeWindow = new WebviewWindow('relay-external-mirror', {
     url: mirrorUrl,
     title: 'Relay Teleprompter Mirror',
@@ -250,13 +258,9 @@ async function createNativeMirrorWindow(selectedMonitorInfo) {
     fullscreen: true,
     focus: false
   });
-  mirrorChannel = new BroadcastChannel('relay-mirror');
-  mirrorChannel.addEventListener('message', (event) => {
-    if (event.data?.type === 'ready') syncMirrorWindow();
-  });
   mirrorNativeWindow.once('tauri://destroyed', () => {
-    mirrorChannel?.close();
-    mirrorChannel = null;
+    mirrorReadyUnlisten?.();
+    mirrorReadyUnlisten = null;
     mirrorNativeWindow = null;
     mirrorEnabled = false;
     mirrorToggle.setAttribute('aria-pressed', 'false');
@@ -286,14 +290,20 @@ function syncMirrorWindow() {
   if (!mirrorEnabled) return;
   const primaryTransform = selectedMonitor === 'primary' ? `translateY(-${scrollPosition}px) scaleX(-1)` : `translateY(-${scrollPosition}px)`;
   content.style.transform = primaryTransform;
-  if (mirrorNativeWindow && mirrorChannel) {
-    mirrorChannel.postMessage({
-      html: content.innerHTML,
+  if (mirrorNativeWindow) {
+    const html = content.innerHTML;
+    const state = {
+      sequence: ++mirrorStateSequence,
       fontSize: `${sizeControl.value}px`,
       scrollPosition,
-      isPlaying,
-      mirrorPrimary: selectedMonitor === 'primary'
-    });
+      isPlaying
+    };
+    if (html !== lastSentMirrorHtml) {
+      state.html = html;
+      lastSentMirrorHtml = html;
+    }
+    window.__TAURI__.event.emitTo('relay-external-mirror', 'relay-mirror-state', state)
+      .catch((error) => console.error('Unable to sync external teleprompter:', error));
     return;
   }
   if (!mirrorWindow || mirrorWindow.closed) return;
@@ -327,6 +337,10 @@ function disableExternalMirror(message = '') {
   content.style.transform = `translateY(-${scrollPosition}px)`;
   mirrorToggle.setAttribute('aria-pressed', 'false');
   mirrorToggle.classList.remove('active');
+  const tauriEvent = window.__TAURI__?.event;
+  const shutdown = mirrorNativeWindow && tauriEvent?.emitTo
+    ? tauriEvent.emitTo('relay-external-mirror', 'relay-mirror-state', { shutdown: true, sequence: ++mirrorStateSequence }).catch(() => {})
+    : Promise.resolve();
   mirrorChannel?.postMessage({ type: 'shutdown' });
   const browserWindowToClose = mirrorWindow;
   const nativeWindowToClose = mirrorNativeWindow;
@@ -334,11 +348,16 @@ function disableExternalMirror(message = '') {
   mirrorWindow = null;
   mirrorNativeWindow = null;
   mirrorChannel = null;
-  setTimeout(() => {
+  mirrorReadyUnlisten?.();
+  mirrorReadyUnlisten = null;
+  mirrorEventUnlisten?.();
+  mirrorEventUnlisten = null;
+  lastSentMirrorHtml = undefined;
+  Promise.resolve(shutdown).finally(() => setTimeout(() => {
     if (browserWindowToClose && !browserWindowToClose.closed) browserWindowToClose.close();
     if (nativeWindowToClose) nativeWindowToClose.close();
     channelToClose?.close();
-  }, 100);
+  }, 100));
   mirrorStatus.textContent = message;
 }
 
@@ -388,6 +407,27 @@ function setupMirrorWindow() {
   document.body.classList.add('mirror-only');
   licenseScreen.classList.add('hidden');
   prompterScreen.classList.remove('hidden');
+  const tauriEvent = window.__TAURI__?.event;
+  if (tauriEvent?.listen && tauriEvent?.emitTo) {
+    let lastSequence = -1;
+    tauriEvent.listen('relay-mirror-state', (event) => {
+      const state = event.payload;
+      if (!state || state.sequence <= lastSequence) return;
+      lastSequence = state.sequence;
+      if (state.shutdown) {
+        content.innerHTML = '';
+        return;
+      }
+      if (state.html !== undefined) content.innerHTML = state.html;
+      const targetText = content.querySelector('p');
+      if (targetText) targetText.style.fontSize = state.fontSize;
+      content.style.transform = `translateY(-${state.scrollPosition}px) scaleX(-1)`;
+    }).then((unlisten) => {
+      mirrorEventUnlisten = unlisten;
+      tauriEvent.emitTo('main', 'relay-mirror-ready').catch((error) => console.error('Unable to signal mirror readiness:', error));
+    }).catch((error) => console.error('Unable to listen for mirror updates:', error));
+    return;
+  }
   mirrorChannel = new BroadcastChannel('relay-mirror');
   mirrorChannel.addEventListener('message', (event) => {
     const state = event.data;
